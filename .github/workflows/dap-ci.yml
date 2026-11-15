@@ -1,0 +1,54 @@
+name: dap-ci
+
+on:
+  push:
+    paths:
+      - "kafka-k8s-platform/**"
+      - ".github/workflows/dap-ci.yml"
+  pull_request:
+    paths:
+      - "kafka-k8s-platform/**"
+      - ".github/workflows/dap-ci.yml"
+
+defaults:
+  run:
+    working-directory: kafka-k8s-platform
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dap-common
+        run: pip install -e "./packages/dap_common[dev]"
+      - name: Contract tests
+        run: pytest -q
+        working-directory: kafka-k8s-platform/packages/dap_common
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    needs: unit
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start stack
+        run: |
+          docker compose up -d --build postgres kafka minio create-topics api ingest etl embed index iot-edge
+      - name: Wait for API
+        run: |
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:8080/health && exit 0
+            sleep 3
+          done
+          docker compose logs api --tail 80
+          exit 1
+      - name: Smoke
+        run: |
+          curl -sf http://localhost:8080/health
+          curl -sf http://localhost:8080/v1/pipeline/overview
+          curl -sf http://localhost:8080/metrics | head -n 5
+      - name: Teardown
+        if: always()
+        run: docker compose down -v

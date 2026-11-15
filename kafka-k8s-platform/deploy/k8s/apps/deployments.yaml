@@ -1,0 +1,314 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-api
+  namespace: dap
+  labels:
+    app: dap-api
+    dap.stage: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dap-api
+  template:
+    metadata:
+      labels:
+        app: dap-api
+        dap.stage: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: dap
+      enableServiceLinks: false
+      containers:
+        - name: api
+          image: dap/api:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          envFrom:
+            - configMapRef:
+                name: dap-config
+            - secretRef:
+                name: dap-secrets
+                optional: true
+          env:
+            - name: DAP_SERVICE_NAME
+              value: api
+            - name: DAP_API_PORT
+              value: "8080"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-api
+  namespace: dap
+spec:
+  selector:
+    app: dap-api
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-ingest
+  namespace: dap
+  labels:
+    app: dap-ingest
+    dap.stage: ingest
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: dap-ingest
+  template:
+    metadata:
+      labels:
+        app: dap-ingest
+        dap.stage: ingest
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: dap
+      enableServiceLinks: false
+      containers:
+        - name: ingest
+          image: dap/ingest:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: dap-config
+          env:
+            - name: DAP_SERVICE_NAME
+              value: ingest
+            - name: DAP_METRICS_PORT
+              value: "9100"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-etl
+  namespace: dap
+  labels:
+    app: dap-etl
+    dap.stage: etl
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: dap-etl
+  template:
+    metadata:
+      labels:
+        app: dap-etl
+        dap.stage: etl
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: dap
+      enableServiceLinks: false
+      containers:
+        - name: etl
+          image: dap/etl:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: dap-config
+          env:
+            - name: DAP_SERVICE_NAME
+              value: etl
+            - name: DAP_METRICS_PORT
+              value: "9100"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-embed
+  namespace: dap
+  labels:
+    app: dap-embed
+    dap.stage: embed
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: dap-embed
+  template:
+    metadata:
+      labels:
+        app: dap-embed
+        dap.stage: embed
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: dap
+      enableServiceLinks: false
+      containers:
+        - name: embed
+          image: dap/embed:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: dap-config
+          env:
+            - name: DAP_SERVICE_NAME
+              value: embed
+            - name: DAP_METRICS_PORT
+              value: "9100"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-index
+  namespace: dap
+  labels:
+    app: dap-index
+    dap.stage: index
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: dap-index
+  template:
+    metadata:
+      labels:
+        app: dap-index
+        dap.stage: index
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: dap
+      enableServiceLinks: false
+      containers:
+        - name: index
+          image: dap/index:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: dap-config
+          env:
+            - name: DAP_SERVICE_NAME
+              value: index
+            - name: DAP_METRICS_PORT
+              value: "9100"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "250m"
+              memory: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-iot-edge
+  namespace: dap
+  labels:
+    app: dap-iot-edge
+    dap.stage: iot-edge
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dap-iot-edge
+  template:
+    metadata:
+      labels:
+        app: dap-iot-edge
+        dap.stage: iot-edge
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: dap
+      enableServiceLinks: false
+      containers:
+        - name: iot-edge
+          image: dap/iot-edge:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: dap-config
+          env:
+            - name: DAP_SERVICE_NAME
+              value: iot-edge
+            - name: DAP_METRICS_PORT
+              value: "9100"
+            - name: DAP_IOT_VEHICLE_COUNT
+              value: "8"
+            - name: DAP_IOT_PUBLISH_INTERVAL_SECONDS
+              value: "1"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "250m"
+              memory: 256Mi

@@ -1,0 +1,27 @@
+Distributed systems treat workers as disposable. PostgreSQL is the source of truth.
+Redis Streams deliver tasks at least once. A worker may die at any moment.
+The scheduler publishes pending work, reclaims expired leases, and advances pipelines.
+Dataset ingest streams files into shards. ETL normalizes text, chunks it, and hashes each chunk.
+Exact SHA-256 deduplication marks later copies so embedding can skip them.
+Local hash embeddings are deterministic: the same text always yields the same vector.
+TinyGPT is a small character model trained from scratch on CPU with durable checkpoints.
+If a training worker dies, another process loads the latest checkpoint and continues.
+Evaluation measures validation loss, perplexity, smoke generation, and artifact presence.
+A quality gate decides whether the checkpoint is published to the model registry.
+Aliases move: candidate, staging, production. Serving must resolve aliases, never raw files.
+Search ranks chunks by cosine distance in pgvector. Dummy hash jobs still work as before.
+The dashboard shows pipelines, jobs, tasks, workers, and registered model aliases.
+This corpus is short on purpose so a laptop can finish the local demo in minutes.
+The platform is the product. TinyGPT is only one workload that runs on the platform.
+Kill a worker and the job still completes. Duplicate execution is allowed; handlers stay idempotent.
+ACK happens only after a durable PostgreSQL commit. Fencing uses leases and attempt numbers.
+MinIO stores raw sources, processed shards, and training checkpoints.
+Prometheus scrapes workers. Grafana graphs queue depth, completions, and failures.
+Phase one dummy tasks hash seeds. Phase two builds datasets. Later phases train and serve.
+The cat sat on the mat. The model sat on the checkpoint. The worker sat on the lease.
+Training steps walk a sliding window of characters and update a small multilayer network.
+Resume must restore weights, momentum, step, and data cursor so loss does not jump randomly.
+Promote writes an immutable version and points the candidate alias at it.
+Rollback moves production back to a previous immutable version without rewriting artifacts.
+Query the same dataset version after embed and the nearest chunks should mention workers or checkpoints.
+Hello world. Distributed AI execution. Local first. Cloud later. Kubernetes is not required here.

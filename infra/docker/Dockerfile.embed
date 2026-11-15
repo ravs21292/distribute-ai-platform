@@ -1,0 +1,26 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md /app/
+COPY src /app/src
+COPY migrations /app/migrations
+COPY alembic.ini /app/alembic.ini
+
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install --no-cache-dir ".[embed]"
+
+ENV PYTHONUNBUFFERED=1
+ENV DML_LOG_JSON=true
+ENV HF_HOME=/models/hf
+ENV DML_EMBEDDING_BACKEND=huggingface
+ENV DML_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+ENV DML_EMBEDDING_DIM=384
+
+EXPOSE 8000 9100
+
+CMD ["python", "-m", "dml.worker.main", "--capabilities", "embedding", "--device", "cpu"]

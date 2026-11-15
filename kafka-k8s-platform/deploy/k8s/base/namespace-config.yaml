@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dap
+  labels:
+    app.kubernetes.io/part-of: dap-kafka-platform
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dap-config
+  namespace: dap
+data:
+  DAP_LOG_LEVEL: "INFO"
+  DAP_LOG_JSON: "true"
+  # Kind/Docker Desktop: infra from docker-compose.infra.yml on the host.
+  DAP_DATABASE_URL: "postgresql+asyncpg://dap:dap@host.docker.internal:5433/dap"
+  DAP_KAFKA_BOOTSTRAP_SERVERS: "host.docker.internal:19092"
+  DAP_S3_ENDPOINT_URL: "http://host.docker.internal:9010"
+  DAP_S3_ACCESS_KEY: "dapminio"
+  DAP_S3_SECRET_KEY: "dapminio"
+  DAP_S3_BUCKET: "dap-artifacts"
+  DAP_PII_REDACTION_ENABLED: "true"
+  # Laptop-safe default; set huggingface in embed overlay when you have RAM/CPU.
+  DAP_EMBEDDING_BACKEND: "deterministic"
+  DAP_EMBEDDING_MODEL: "deterministic"
+  DAP_EMBEDDING_MODEL_VERSION: "v1"
+  DAP_EMBEDDING_DIM: "384"
+  DAP_KAFKA_MAX_POLL_RECORDS: "8"
+  DAP_AUTH_REQUIRED: "false"
+  DAP_IOT_FLEET_ID: "fleet-east-01"
+  DAP_IOT_FLEET_NAME: "East Coast EV Fleet"
+  DAP_IOT_PUBLISH_INTERVAL_SECONDS: "1"
+  DAP_IOT_ALERT_PROBABILITY: "0.35"
+  DAP_METRICS_ENABLED: "true"
+  DAP_METRICS_PORT: "9100"
+  DAP_EDGE_MODE: "simulator"
+  # Optional auth stays off for local Kind demos (see secrets.example.yaml + prod overlay)
+  # DAP_API_KEYS / DAP_JWT_SECRET belong in Secret dap-secrets, not here.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dap
+  namespace: dap

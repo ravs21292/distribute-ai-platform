@@ -1,0 +1,6 @@
+Contact alice@example.com for ops questions.
+Worker checkpoints must survive process death.
+Kafka lag signals backpressure when ingest outruns consumers.
+Kubernetes scales consumer pods when lag crosses a threshold.
+Content-addressed embeddings skip unchanged text.
+Distributed stages communicate only through Kafka and Postgres.

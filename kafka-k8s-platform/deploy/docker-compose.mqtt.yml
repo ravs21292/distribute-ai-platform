@@ -1,0 +1,33 @@
+# Optional MQTT edge path — keep iot_edge simulator as default.
+# docker compose -f docker-compose.yml -f deploy/docker-compose.mqtt.yml --profile mqtt up -d
+
+services:
+  mosquitto:
+    profiles: ["mqtt"]
+    image: eclipse-mosquitto:2.0.20
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./deploy/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  mqtt-bridge:
+    profiles: ["mqtt"]
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: mqtt-bridge
+    environment:
+      DAP_DATABASE_URL: postgresql+asyncpg://dap:dap@postgres:5432/dap
+      DAP_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DAP_SERVICE_NAME: mqtt-bridge
+      DAP_EDGE_MODE: mqtt
+      DAP_MQTT_BROKER_HOST: mosquitto
+      DAP_MQTT_BROKER_PORT: "1883"
+      DAP_MQTT_TELEMETRY_TOPIC: fleet/+/vehicle/+/telemetry
+      DAP_METRICS_PORT: "9100"
+    ports:
+      - "9106:9100"
+    depends_on:
+      - mosquitto
+      - kafka
+      - create-topics

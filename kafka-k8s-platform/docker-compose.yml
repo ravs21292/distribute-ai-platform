@@ -1,0 +1,166 @@
+# EV fleet telematics — continuous IoT stream via Kafka (no file-upload primary path).
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    ports:
+      - "8080:8080"
+    environment: &dap-env
+      DAP_DATABASE_URL: postgresql+asyncpg://dap:dap@postgres:5432/dap
+      DAP_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      DAP_S3_ENDPOINT_URL: http://minio:9000
+      DAP_S3_ACCESS_KEY: dapminio
+      DAP_S3_SECRET_KEY: dapminio
+      DAP_S3_BUCKET: dap-artifacts
+      DAP_EMBEDDING_BACKEND: deterministic
+      DAP_EMBEDDING_MODEL: deterministic
+      DAP_EMBEDDING_MODEL_VERSION: v1
+      DAP_PII_REDACTION_ENABLED: "true"
+      DAP_API_PORT: "8080"
+      DAP_IOT_FLEET_ID: fleet-east-01
+      DAP_IOT_FLEET_NAME: East Coast EV Fleet
+      DAP_IOT_VEHICLE_COUNT: "0"
+      DAP_IOT_PUBLISH_INTERVAL_SECONDS: "2"
+      DAP_IOT_ALERT_PROBABILITY: "0.22"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      create-topics:
+        condition: service_completed_successfully
+
+  iot-edge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: iot-edge
+    ports:
+      - "9105:9100"
+    environment:
+      <<: *dap-env
+      DAP_SERVICE_NAME: iot-edge
+      DAP_METRICS_PORT: "9100"
+    depends_on:
+      create-topics:
+        condition: service_completed_successfully
+      ingest:
+        condition: service_started
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ingest
+    ports:
+      - "9101:9100"
+    environment:
+      <<: *dap-env
+      DAP_SERVICE_NAME: ingest
+      DAP_METRICS_PORT: "9100"
+    depends_on:
+      create-topics:
+        condition: service_completed_successfully
+
+  etl:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: etl
+    ports:
+      - "9102:9100"
+    environment:
+      <<: *dap-env
+      DAP_SERVICE_NAME: etl
+      DAP_METRICS_PORT: "9100"
+    depends_on:
+      create-topics:
+        condition: service_completed_successfully
+
+  embed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: embed
+    ports:
+      - "9103:9100"
+    environment:
+      <<: *dap-env
+      DAP_SERVICE_NAME: embed
+      DAP_METRICS_PORT: "9100"
+    depends_on:
+      create-topics:
+        condition: service_completed_successfully
+
+  index:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: index
+    ports:
+      - "9104:9100"
+    environment:
+      <<: *dap-env
+      DAP_SERVICE_NAME: index
+      DAP_METRICS_PORT: "9100"
+    depends_on:
+      create-topics:
+        condition: service_completed_successfully
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: dap
+      POSTGRES_PASSWORD: dap
+      POSTGRES_DB: dap
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dap -d dap"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: apache/kafka:3.8.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:19092
+      # host.docker.internal so Kind pods (and host tools) can reconnect after metadata.
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://host.docker.internal:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "19092:19092"
+
+  minio:
+    image: quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: dapminio
+      MINIO_ROOT_PASSWORD: dapminio
+    ports:
+      - "9010:9000"
+
+  create-topics:
+    image: apache/kafka:3.8.0
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        for i in $(seq 1 40); do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list && break
+          sleep 2
+        done
+        for t in dap.iot.telemetry dap.etl.events dap.embed.alerts dap.index.checks dap.edge.commands dap.dlq; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic $$t --partitions 6 --replication-factor 1
+        done
+        echo topics-ready

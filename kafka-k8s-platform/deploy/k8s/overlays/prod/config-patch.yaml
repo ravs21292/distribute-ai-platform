@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dap-config
+  namespace: dap
+data:
+  DAP_EMBEDDING_BACKEND: "huggingface"
+  DAP_EMBEDDING_MODEL: "sentence-transformers/all-MiniLM-L6-v2"
+  DAP_AUTH_REQUIRED: "true"
+  DAP_LOG_LEVEL: "INFO"
+  # Replace with managed endpoints in real clusters:
+  # DAP_KAFKA_BOOTSTRAP_SERVERS: "b-1.msk.amazonaws.com:9092"
+  # DAP_DATABASE_URL: "postgresql+asyncpg://..."

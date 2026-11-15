@@ -1,0 +1,10 @@
+groups:
+  - name: dap-pipeline
+    rules:
+      - alert: DapHandlerErrors
+        expr: increase(dap_messages_total{outcome="error"}[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DAP handler errors rising for {{ $labels.service }}"

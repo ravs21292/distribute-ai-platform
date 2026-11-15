@@ -1,0 +1,89 @@
+# KEDA demo: lower lag thresholds so scale-up is visible on a laptop.
+# Poll often; cooldown shorter so scale-down is observable too.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: dap-ingest-scaler
+  namespace: dap
+spec:
+  scaleTargetRef:
+    name: dap-ingest
+  pollingInterval: 5
+  cooldownPeriod: 30
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: host.docker.internal:19092
+        consumerGroup: dap-ingest
+        topic: dap.iot.telemetry
+        lagThreshold: "5"
+        activationLagThreshold: "1"
+        offsetResetPolicy: earliest
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: dap-etl-scaler
+  namespace: dap
+spec:
+  scaleTargetRef:
+    name: dap-etl
+  pollingInterval: 5
+  cooldownPeriod: 30
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: host.docker.internal:19092
+        consumerGroup: dap-etl
+        topic: dap.etl.events
+        lagThreshold: "5"
+        activationLagThreshold: "1"
+        offsetResetPolicy: earliest
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: dap-embed-scaler
+  namespace: dap
+spec:
+  scaleTargetRef:
+    name: dap-embed
+  pollingInterval: 5
+  cooldownPeriod: 45
+  minReplicaCount: 0
+  maxReplicaCount: 3
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: host.docker.internal:19092
+        consumerGroup: dap-embed
+        topic: dap.embed.alerts
+        lagThreshold: "3"
+        activationLagThreshold: "1"
+        offsetResetPolicy: earliest
+---
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: dap-index-scaler
+  namespace: dap
+spec:
+  scaleTargetRef:
+    name: dap-index
+  pollingInterval: 10
+  cooldownPeriod: 30
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: host.docker.internal:19092
+        consumerGroup: dap-index
+        topic: dap.index.checks
+        lagThreshold: "5"
+        activationLagThreshold: "1"
+        offsetResetPolicy: earliest

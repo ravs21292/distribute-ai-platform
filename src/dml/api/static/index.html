@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DML Operations</title>
+  <style>
+    :root {
+      --bg: #070b14;
+      --panel: #101826;
+      --panel-2: #0c1320;
+      --line: #1e2a40;
+      --text: #e8eef8;
+      --muted: #7d8da8;
+      --idle: #8b9bb4;
+      --ok: #3ee0a0;
+      --busy: #4ea3ff;
+      --warn: #f0c14a;
+      --bad: #ff5d73;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "IBM Plex Sans", "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    header { display: flex; justify-content: space-between; align-items: center; padding: 16px 24px; border-bottom: 1px solid var(--line); background: #0a111c; }
+    header h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+    header .meta { color: var(--muted); font-size: 12px; }
+    .mode { display: flex; align-items: center; gap: 10px; }
+    .pulse { width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
+    .pulse.on { background: var(--busy); box-shadow: 0 0 0 4px rgba(78,163,255,.18); }
+    .pulse.ok { background: var(--ok); box-shadow: 0 0 0 4px rgba(62,224,160,.15); }
+    .pulse.bad { background: var(--bad); }
+    .kpis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; padding: 16px 24px 8px; }
+    .kpi { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+    .kpi b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+    .kpi span { color: var(--muted); font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
+    main { display: grid; grid-template-columns: 1.2fr .8fr; gap: 14px; padding: 8px 24px 28px; }
+    section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+    section.wide { grid-column: 1 / -1; }
+    h2 { margin: 0 0 12px; font-size: 11px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+    .fleet { display: grid; gap: 8px; }
+    .worker { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel-2); }
+    .worker .id { font-weight: 600; font-size: 13px; }
+    .caps, .hint { color: var(--muted); font-size: 11px; }
+    .pill { display: inline-block; border-radius: 999px; padding: 2px 8px; font-size: 11px; background: #182338; color: var(--muted); }
+    .idle { color: var(--idle); } .busy { color: var(--busy); } .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+    .dag { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; }
+    .node { min-width: 108px; text-align: left; border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: var(--panel-2); }
+    .node strong { display: block; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; }
+    .node small { color: var(--muted); display: block; margin-top: 4px; }
+    .arrow { color: var(--muted); align-self: center; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { text-align: left; padding: 8px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-weight: 500; }
+    .bars { display: grid; gap: 10px; }
+    .bar-row { display: grid; grid-template-columns: 90px 1fr 64px; gap: 8px; align-items: center; font-size: 12px; }
+    .bar { height: 8px; background: #182338; border-radius: 99px; overflow: hidden; }
+    .bar > i { display: block; height: 100%; background: var(--busy); }
+    .bar.ok > i { background: var(--ok); }
+    .policy { color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .policy b { color: var(--text); }
+    .search { display: flex; gap: 8px; margin-top: 12px; }
+    .search input { flex: 1; background: #070b14; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px 10px; }
+    .search button { background: #1b4f9c; color: white; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    .hits { margin-top: 8px; font-size: 12px; color: var(--muted); display: grid; gap: 6px; }
+    .empty { color: var(--muted); padding: 8px 0; }
+    .group { color: var(--muted); font-size: 11px; margin: 0 0 8px; }
+    @media (max-width: 1100px) {
+      .kpis { grid-template-columns: repeat(3, 1fr); }
+      main { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Execution control plane</h1>
+      <div class="meta" id="clock">waiting for API</div>
+    </div>
+    <div class="mode">
+      <span class="pulse" id="pulse"></span>
+      <div>
+        <div id="modeLabel" style="font-weight:650">CONNECTING</div>
+        <div class="meta" id="health">checking</div>
+      </div>
+    </div>
+  </header>
+  <div class="kpis" id="kpis"></div>
+  <main>
+    <section>
+      <h2>Worker fleet</h2>
+      <div class="fleet" id="fleet"></div>
+    </section>
+    <section>
+      <h2>Data plane</h2>
+      <div id="data"></div>
+      <div class="search">
+        <input id="q" placeholder="Search pgvector, e.g. distributed workers" />
+        <button id="searchBtn">Search</button>
+      </div>
+      <div class="hits" id="hits"></div>
+    </section>
+    <section class="wide">
+      <h2>Pipeline DAG</h2>
+      <div id="dag"></div>
+    </section>
+    <section>
+      <h2>Jobs</h2>
+      <div id="jobs"></div>
+    </section>
+    <section>
+      <h2>Failure handling</h2>
+      <div class="policy" id="policy"></div>
+      <div id="failures" style="margin-top:10px"></div>
+    </section>
+  </main>
+  <script>
+    const cls = (s) => {
+      s = (s || "").toLowerCase();
+      if (["completed","succeeded","ready","healthy","idle"].includes(s)) return "ok";
+      if (["busy","running","queued","processing"].includes(s)) return "busy";
+      if (["failed","dead_letter","cancelled","unhealthy","down"].includes(s)) return "bad";
+      return "warn";
+    };
+    const pill = (s) => `<span class="pill ${cls(s)}">${s || "-"}</span>`;
+    const roleLabel = (r) => ({ pipeline: "pipeline", embedding: "embedding", training: "training" }[r] || r || "worker");
+    async function get(path, opts) {
+      const res = await fetch(path, opts);
+      const text = await res.text();
+      let body = text;
+      try { body = JSON.parse(text); } catch (e) {}
+      if (!res.ok) throw new Error((body && body.detail) ? JSON.stringify(body.detail) : text);
+      return body;
+    }
+    function renderDag(pipeline, template) {
+      if (!pipeline) {
+        return '<div class="empty">Idle. No pipeline is running.</div>';
+      }
+      const byName = Object.fromEntries((pipeline.nodes || []).map(n => [n.name, n]));
+      const groups = [
+        ["Data flow", template.data || []],
+        ["Train / eval / promote", template.train || []],
+      ];
+      return groups.map(([label, group]) => {
+        if (!group.length) return "";
+        const parts = group.map((n, i) => {
+          const live = byName[n.name] || { status: "pending" };
+          const worker = live.worker_id ? live.worker_id : (live.status === "running" ? "claiming worker" : "—");
+          return `${i ? '<span class="arrow">→</span>' : ""}<div class="node"><strong>${n.name}</strong>${pill(live.status)}<small>${worker}</small></div>`;
+        }).join("");
+        return `<div style="margin-bottom:14px"><div class="group">${label}</div><div class="dag">${parts}</div></div>`;
+      }).join("") + `<div class="hint">Run ${pipeline.id} · ${pill(pipeline.status)}</div>`;
+    }
+    async function refresh() {
+      try {
+        const ready = await get("/health/ready");
+        document.getElementById("health").textContent = "API " + ready.status;
+      } catch (e) {
+        document.getElementById("health").textContent = "API not ready";
+        document.getElementById("modeLabel").textContent = "DOWN";
+        document.getElementById("pulse").className = "pulse bad";
+        return;
+      }
+      const ov = await get("/v1/ops/overview");
+      const c = ov.cluster;
+      const processing = c.mode === "processing";
+      document.getElementById("modeLabel").textContent = processing ? "IN ACTION" : "IDLE";
+      document.getElementById("pulse").className = processing ? "pulse on" : "pulse ok";
+      document.getElementById("clock").textContent = new Date().toLocaleTimeString() + " · live heartbeat every 2.5s";
+      document.getElementById("kpis").innerHTML = [
+        ["Live workers", c.workers_live],
+        ["Busy / idle", c.workers_busy + " / " + c.workers_idle],
+        ["Pipelines active", c.pipelines_active],
+        ["Tasks running", c.tasks_running],
+        ["Queued", c.tasks_queued],
+        ["Dead letter", c.tasks_dead_letter],
+      ].map(([k,v]) => `<div class="kpi"><span>${k}</span><b>${v}</b></div>`).join("");
+
+      document.getElementById("fleet").innerHTML = ov.workers.map(w => {
+        const work = w.current_task_type
+          ? `running ${w.current_task_type} · attempt ${w.current_attempt}`
+          : "waiting for work";
+        const hb = w.heartbeat_age_s == null ? "" : ` · hb ${Math.round(w.heartbeat_age_s)}s`;
+        return `<div class="worker"><span class="pulse ${w.status === "busy" ? "on" : "ok"}"></span><div><div class="id">${w.worker_id}</div><div class="caps">${roleLabel(w.role)} · ${w.device}${hb}<br>${(w.capabilities||[]).join(", ")}</div></div><div><div>${pill(w.status)}</div><div class="caps">${work}</div></div></div>`;
+      }).join("") || '<div class="empty">No live workers</div>';
+
+      const d = ov.data;
+      const denom = Math.max(d.chunks || 1, 1);
+      const embedPct = Math.min(100, Math.round((d.embeddings / denom) * 100));
+      const readyPct = d.latest_status === "ready" ? 100 : (d.chunks ? 60 : 0);
+      document.getElementById("data").innerHTML = `
+        <div class="bars">
+          <div class="bar-row"><span>Dataset</span><div>${d.latest_dataset || "none"} ${d.latest_version_label || ""} ${d.latest_status ? pill(d.latest_status) : ""}</div><span>${(d.source_bytes/1048576).toFixed(1)} MB</span></div>
+          <div class="bar-row"><span>Postgres</span><div class="bar ok"><i style="width:${readyPct}%"></i></div><span>${d.documents} docs</span></div>
+          <div class="bar-row"><span>Chunks</span><div class="bar"><i style="width:${d.chunks ? 100 : 0}%"></i></div><span>${d.chunks}</span></div>
+          <div class="bar-row"><span>pgvector</span><div class="bar"><i style="width:${embedPct}%"></i></div><span>${d.embeddings}</span></div>
+        </div>
+        <div class="hint" style="margin-top:8px">${d.embedding_backend} · ${d.embedding_model} · dim ${d.embedding_dim}</div>`;
+      window.__latestVersion = d.latest_version_id;
+
+      const pipe = (ov.pipelines || []).find(p => p.status === "running") || (ov.pipelines || [])[0];
+      document.getElementById("dag").innerHTML = renderDag(pipe, ov.dag);
+
+      document.getElementById("jobs").innerHTML = ov.jobs.length
+        ? "<table><tr><th>name</th><th>type</th><th>status</th><th>tasks</th></tr>" +
+          ov.jobs.map(j => `<tr><td>${j.name || j.id}</td><td>${j.job_type}</td><td>${pill(j.status)}</td><td>${j.task_count}</td></tr>`).join("") +
+          "</table>"
+        : '<div class="empty">No jobs in motion.</div>';
+
+      const p = ov.failure_policy;
+      document.getElementById("policy").innerHTML = `
+        Worker death is expected. Lease expires in <b>${p.lease_seconds}s</b>, then <b>${p.reclaim}</b> reassigns the Redis Stream message.
+        ACK only after <b>${p.ack_after}</b>. Retryable errors retry <b>${p.max_attempts} times</b>, then dead-letter. Promote is blocked unless the quality gate passes.`;
+      document.getElementById("failures").innerHTML = ov.failures.length
+        ? "<table><tr><th>type</th><th>status</th><th>attempts</th><th>worker</th><th>error</th></tr>" +
+          ov.failures.map(f => `<tr><td>${f.task_type}</td><td>${pill(f.status)}</td><td>${f.attempts}/${f.max_attempts}</td><td>${f.worker_id || "—"}</td><td>${(f.error || f.error_type || "").slice(0,140)}</td></tr>`).join("") +
+          "</table>"
+        : '<div class="empty">No failed or dead-letter tasks.</div>';
+    }
+    document.getElementById("searchBtn").onclick = async () => {
+      const q = document.getElementById("q").value.trim();
+      const vid = window.__latestVersion;
+      if (!q || !vid) { document.getElementById("hits").textContent = "Need a query and a dataset version with embeddings."; return; }
+      try {
+        const res = await get("/v1/search", { method: "POST", headers: {"content-type":"application/json"}, body: JSON.stringify({ query: q, dataset_version: vid, limit: 5 }) });
+        const hits = Array.isArray(res) ? res : (res.hits || []);
+        const gov = res && res.governance
+          ? `<div class="empty">RAG governance: ${res.governance.classification} / pii=${res.governance.pii_policy}` +
+            (res.query_pii_redacted ? " (query PII redacted)" : "") + "</div>"
+          : "";
+        document.getElementById("hits").innerHTML = gov + (hits.length
+          ? hits.map(h => `<div><b class="ok">${h.similarity.toFixed(3)}</b> ${(h.chunk || "").slice(0,220)}</div>`).join("")
+          : "No embedding hits yet.");
+      } catch (e) {
+        document.getElementById("hits").textContent = e.message;
+      }
+    };
+    refresh();
+    setInterval(refresh, 2500);
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+Distributed AI platforms need durable task delivery and reclaim.
+Worker checkpoints must survive process death.
+Content-addressed embeddings skip unchanged text.
+Contact ops at ops@example.com only in docs — production ETL should redact that.
+Kafka lag signals backpressure when ingest outruns consumers.
+Kubernetes scales consumer pods when lag crosses a threshold.

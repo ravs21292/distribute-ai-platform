@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: dap
+resources:
+  - ../../base/namespace-config.yaml
+  - ../../base/secrets.example.yaml
+  - ../../apps/deployments.yaml
+  - ../../apps/console.yaml
+  - ../../apps/ingress.yaml
+  - ../../keda/scaledobjects.yaml
+patches:
+  - path: config-patch.yaml
+  - path: auth-patch.yaml

@@ -1,0 +1,377 @@
+# In-cluster Prometheus + Grafana for Kind (scrapes dap pods via annotations).
+# Port-forward: kubectl -n dap port-forward svc/dap-grafana 3000:3000
+#               kubectl -n dap port-forward svc/dap-prometheus 9090:9090
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dap-prometheus
+  namespace: dap
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dap-prometheus
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/proxy, services, endpoints, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch]
+  - nonResourceURLs: ["/metrics"]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dap-prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dap-prometheus
+subjects:
+  - kind: ServiceAccount
+    name: dap-prometheus
+    namespace: dap
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dap-prometheus-config
+  namespace: dap
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 10s
+      evaluation_interval: 15s
+    rule_files:
+      - /etc/prometheus/alerts.yml
+    scrape_configs:
+      - job_name: dap-api
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - dap-api:8080
+      - job_name: dap-ingest
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - dap-ingest-metrics:9100
+      - job_name: dap-etl
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - dap-etl-metrics:9100
+      - job_name: dap-embed
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - dap-embed-metrics:9100
+      - job_name: dap-index
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - dap-index-metrics:9100
+      - job_name: dap-iot-edge
+        metrics_path: /metrics
+        static_configs:
+          - targets:
+              - dap-iot-edge-metrics:9100
+  alerts.yml: |
+    groups:
+      - name: dap-pipeline
+        rules:
+          - alert: DapHandlerErrors
+            expr: increase(dap_messages_total{outcome="error"}[5m]) > 5
+            for: 2m
+            labels:
+              severity: warning
+            annotations:
+              summary: DAP handler errors rising
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-ingest-metrics
+  namespace: dap
+spec:
+  selector:
+    app: dap-ingest
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-etl-metrics
+  namespace: dap
+spec:
+  selector:
+    app: dap-etl
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-embed-metrics
+  namespace: dap
+spec:
+  selector:
+    app: dap-embed
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-index-metrics
+  namespace: dap
+spec:
+  selector:
+    app: dap-index
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-iot-edge-metrics
+  namespace: dap
+spec:
+  selector:
+    app: dap-iot-edge
+  ports:
+    - name: metrics
+      port: 9100
+      targetPort: 9100
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-prometheus
+  namespace: dap
+  labels:
+    app: dap-prometheus
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dap-prometheus
+  template:
+    metadata:
+      labels:
+        app: dap-prometheus
+    spec:
+      serviceAccountName: dap-prometheus
+      enableServiceLinks: false
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.54.1
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+            - --web.enable-lifecycle
+          ports:
+            - containerPort: 9090
+              name: http
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: dap-prometheus-config
+            items:
+              - key: prometheus.yml
+                path: prometheus.yml
+              - key: alerts.yml
+                path: alerts.yml
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-prometheus
+  namespace: dap
+spec:
+  selector:
+    app: dap-prometheus
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dap-grafana-datasource
+  namespace: dap
+data:
+  datasource.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://dap-prometheus:9090
+        isDefault: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dap-grafana-dashboards-provider
+  namespace: dap
+data:
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: dap
+        orgId: 1
+        folder: DAP
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dap-grafana-dashboard
+  namespace: dap
+data:
+  dap-pipeline.json: |
+    {
+      "title": "DAP Kafka Pipeline",
+      "uid": "dap-pipeline",
+      "timezone": "browser",
+      "schemaVersion": 39,
+      "version": 3,
+      "time": { "from": "now-15m", "to": "now" },
+      "refresh": "5s",
+      "panels": [
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Messages processed (ok)",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [{
+            "refId": "A",
+            "expr": "sum by (service) (rate(dap_messages_total{outcome=\"ok\"}[1m]))",
+            "legendFormat": "{{service}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }]
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Handler errors",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [{
+            "refId": "A",
+            "expr": "sum by (service) (rate(dap_messages_total{outcome=\"error\"}[1m]))",
+            "legendFormat": "{{service}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }]
+        },
+        {
+          "id": 3,
+          "type": "timeseries",
+          "title": "Handler latency p95",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+          "targets": [{
+            "refId": "A",
+            "expr": "histogram_quantile(0.95, sum by (service, le) (rate(dap_handler_seconds_bucket[5m])))",
+            "legendFormat": "{{service}}",
+            "datasource": { "type": "prometheus", "uid": "prometheus" }
+          }]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-grafana
+  namespace: dap
+  labels:
+    app: dap-grafana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dap-grafana
+  template:
+    metadata:
+      labels:
+        app: dap-grafana
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: grafana
+          image: grafana/grafana:11.2.0
+          env:
+            - name: GF_SECURITY_ADMIN_USER
+              value: dap
+            - name: GF_SECURITY_ADMIN_PASSWORD
+              value: dap
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: Admin
+          ports:
+            - containerPort: 3000
+          volumeMounts:
+            - name: datasource
+              mountPath: /etc/grafana/provisioning/datasources
+            - name: provider
+              mountPath: /etc/grafana/provisioning/dashboards
+            - name: dashboards
+              mountPath: /var/lib/grafana/dashboards
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+      volumes:
+        - name: datasource
+          configMap:
+            name: dap-grafana-datasource
+        - name: provider
+          configMap:
+            name: dap-grafana-dashboards-provider
+        - name: dashboards
+          configMap:
+            name: dap-grafana-dashboard
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-grafana
+  namespace: dap
+spec:
+  selector:
+    app: dap-grafana
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

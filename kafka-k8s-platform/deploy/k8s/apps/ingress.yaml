@@ -1,0 +1,60 @@
+# Optional Ingress for Kind (requires ingress controller).
+# kind: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+# Keep port-forward as the simple local path.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dap-ingress
+  namespace: dap
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: dap.local
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: dap-api
+                port:
+                  number: 8080
+          - path: /(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: dap-console
+                port:
+                  number: 80
+---
+# Simpler same-host split without rewrite gymnastics (preferred for demos)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dap-ingress-simple
+  namespace: dap
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.dap.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dap-api
+                port:
+                  number: 8080
+    - host: console.dap.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: dap-console
+                port:
+                  number: 80

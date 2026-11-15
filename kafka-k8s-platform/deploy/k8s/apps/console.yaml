@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-console
+  namespace: dap
+  labels:
+    app: dap-console
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dap-console
+  template:
+    metadata:
+      labels:
+        app: dap-console
+    spec:
+      enableServiceLinks: false
+      containers:
+        - name: console
+          image: dap/console:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: "200m"
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dap-console
+  namespace: dap
+spec:
+  selector:
+    app: dap-console
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+  type: ClusterIP

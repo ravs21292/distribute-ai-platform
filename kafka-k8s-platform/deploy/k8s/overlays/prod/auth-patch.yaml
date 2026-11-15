@@ -1,0 +1,22 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dap-api
+  namespace: dap
+spec:
+  template:
+    spec:
+      containers:
+        - name: api
+          envFrom:
+            - configMapRef:
+                name: dap-config
+            - secretRef:
+                name: dap-secrets
+          env:
+            - name: DAP_SERVICE_NAME
+              value: api
+            - name: DAP_API_PORT
+              value: "8080"
+            - name: DAP_AUTH_REQUIRED
+              value: "true"
